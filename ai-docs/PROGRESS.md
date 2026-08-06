@@ -6,13 +6,13 @@
 
 ```
 edu-os/               root = "runner" crate（host向け、std使える）
-├── Cargo.toml          bootloader + anyhow依存
-├── src/main.rs          kernel build → disk image化 → QEMU起動、を実行する側（実装中）
+├── Cargo.toml          bootloader(bios機能のみ) + anyhow依存
+├── src/main.rs          kernel build → disk image化 → QEMU起動、を実行する側
 ├── ai-docs/
 └── kernel/             bare-metal kernel本体、独立ビルド可能
     ├── .cargo/config.toml   [build] target = "x86_64-unknown-none" 固定
     ├── Cargo.toml            bootloader_api依存
-    └── src/main.rs           entry_point!(kernel_main)、中身spin loopのみ
+    └── src/main.rs           entry_point!(kernel_main)、framebuffer単色塗りつぶし
 ```
 
 workspace化はしていない（意図的、下記参照）。root/kernelは別々の独立cargoプロジェクト。
@@ -25,24 +25,29 @@ workspace化はしていない（意図的、下記参照）。root/kernelは別
 
 **How to apply:** kernel側に新しいbuild成果物や設定を足す時、rootのworkspace化を持ち出さない。root→kernelの連携は常にCommand越し。
 
-## kernel/src/main.rs 現状
+## はまった点（既出、再発済み注意）
 
-freestanding化済み。`entry_point!(kernel_main)`マクロ使用（`_start`手書きは廃止）、`kernel_main`中身は無限spin loop、`#[panic_handler]`自前定義。
+`bootloader`crateのdefault featuresに`uefi`含まれてて、環境のnightly/lldでは`wcslen`未解決でlink失敗する。`Cargo.toml`で
 
-`cd kernel && cargo build --target x86_64-unknown-none` 成功確認済み。実行内容（実際にCPU上で動くか）は未検証＝まだブートすらしてない状態。
+```toml
+bootloader = { version = "0.11.17", default-features = false, features = ["bios"] }
+```
 
-## root/src/main.rs 現状
+これが必須。一度直したが誤って`default-features`指定なしに戻り再発した実績あり→この行を消さないよう注意。
 
-未完成、ユーザー実装中。設計: `Command`でkernelを`cargo build`→`kernel/target/x86_64-unknown-none/debug/edu-os`のELF取得→`bootloader::BiosBoot::new(...).create_disk_image(...)`でdisk image化→`qemu-system-x86_64`起動、の4段階。
+rootで`cargo build --target x86_64-unknown-none`を誤実行すると、std前提のroot依存crate(serde等)がbare-metal target向けにビルドされ大量`not found`エラーになる。`--target x86_64-unknown-none`はkernel/配下限定というルールをREADME.mdに明記済み。
 
-ユーザーはRust初心者、`Command` / `?`演算子 / `anyhow::Result` / `anyhow::ensure!`が今回新規登場、理解途上。
+## マイルストーン
 
-## AI運用の補足（[[INTENT]]に追記）
+1. kernel freestanding化（`entry_point!`マクロ、`#[panic_handler]`）→ 完了
+2. root/src/main.rs（Command経由でkernel build→BiosBoot::create_disk_image→qemu-system-x86_64起動）→ 完了
+3. `cargo run`（root）でQEMU起動確認 → 完了。bootloaderの起動ログ出力後「Jumping to kernel entry point」→`kernel_main`到達確認
+4. framebuffer単色塗りつぶし → 完了。`boot_info.framebuffer.as_mut().unwrap()`→`chunks_exact_mut(bytes_per_pixel)`でpixel単位に緑色書き込み、QEMU上で緑一色表示確認
 
-コードファイルの直接編集はしない（Write/Edit禁止、提示のみ）。例外: ディレクトリ構造のmvなど、ユーザーが明示的に依頼した非コード・機械的操作は可（例: `kernel/`への移動は実施済み）。
+`BootInfo`経由のframebuffer情報: `width: 1280, height: 720, pixel_format: Bgr, bytes_per_pixel: 3`（環境依存、QEMU実行時ログで確認）。
 
 ## 次アクション
 
-root/src/main.rs完成 → `cargo run`（root側）で disk image生成 → QEMU実起動確認（画面表示はまだ、spin loopが実際CPU上で回ってる事の確認が目標）。
+未定（次セッションでユーザーと相談）。候補: framebufferへの文字描画（bitmap font要、Oppermann旧チュートリアルのVGAテキストバッファ方式とは別物）、CPU例外ハンドラ(IDT)。
 
-範囲外（今回やらない）: VGA出力、割り込み(IDT)、ページング、自作bootloader（[[INTENT]]参照、後回し方針）。
+範囲外（今回やらない）: ページング、自作bootloader（[[INTENT]]参照、後回し方針）。
