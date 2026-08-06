@@ -1,6 +1,8 @@
 #![no_std]
 #![no_main]
 
+// bootloader_apiを使うとno_mangleを手書きしなくてよくなるらしい
+use bootloader_api::{entry_point, BootInfo};
 use core::panic::PanicInfo;
 
 // 渡し方を固定するらしいが、何に対してかわかってない
@@ -9,12 +11,14 @@ use core::panic::PanicInfo;
 // Rustがfn nameをmangled nameに変換するが、
 // このときbootloaderは_startを探すので、no mangleで固定する
 
-#[unsafe(no_mangle)]
-pub extern "C" fn _start() -> ! {
+
+entry_point!(kernel_main);
+fn kernel_main(_boot_info: &'static mut BootInfo) -> ! {
     loop {
         core::hint::spin_loop();
     }
 }
+
 
 #[panic_handler]
 fn panic(_info: &PanicInfo) -> ! {
