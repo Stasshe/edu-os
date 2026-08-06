@@ -13,7 +13,21 @@ use core::panic::PanicInfo;
 
 
 entry_point!(kernel_main);
-fn kernel_main(_boot_info: &'static mut BootInfo) -> ! {
+fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
+    
+    let framebuffer = boot_info.framebuffer.as_mut().unwrap();
+    let info = framebuffer.info();
+    let buffer = framebuffer.buffer_mut();
+
+    for chunk in buffer.chunks_exact_mut(info.bytes_per_pixel) {
+        chunk[0] = 0x00; //Blue
+        chunk[1] = 0xff; //Green
+        chunk[2] = 0x00; //Red
+
+    }
+
+
+
     loop {
         core::hint::spin_loop();
     }
