@@ -13,6 +13,8 @@ use bootloader_api::{entry_point, BootInfo};
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+
+use crate::interrupts::InterruptIndex::Keyboard;
 // use x86_64::structures::idt::PageFaultErrorCode;
 
 
@@ -110,17 +112,42 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFr
 }
 
 extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    // use x86_64::instructions::port::Port;
+    //
+    // let mut port = Port::new(0x60); // keyboard controller のdata port
+    // let scancode: u8 = unsafe {port.read()};
+    //
+    // print!("{:x}", scancode);
+    // // とりまraw scancodeだけ表示  
+    //
+    // unsafe {
+    //     interrupts::PICS
+    //         .lock()
+    //         .notify_end_of_interrupt(interrupts::InterruptIndex::Keyboard.as_u8());
+    // }
+
+    use pc_keyboard::DecodedKey;
     use x86_64::instructions::port::Port;
     
     let mut port = Port::new(0x60); // keyboard controller のdata port
     let scancode: u8 = unsafe {port.read()};
     
-    print!("{:x}", scancode);
-    // とりまraw scancodeだけ表示  
+    let mut keyboard = interrupts::KEYBOARD.lock();
+    if let Ok(Some(key_event)) = keyboard.add_byte(scancode) 
+        && let Some(key) = keyboard.process_keyevent(key_event)
+    {
+        match key {
+            DecodedKey::Unicode(c) => print!("{}",c),
+            DecodedKey::RawKey(k) => print!("{:?}",k),
+        }
+
+        
+    }
 
     unsafe {
         interrupts::PICS
             .lock()
             .notify_end_of_interrupt(interrupts::InterruptIndex::Keyboard.as_u8());
     }
+
 }

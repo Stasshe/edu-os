@@ -1,5 +1,9 @@
 use pic8259::ChainedPics;
 use spin;
+use lazy_static::lazy_static;
+use pc_keyboard::{layouts, HandleControl, PS2Keyboard,ScancodeSet1};
+use spin::Mutex;
+
 
 pub const PIC_1_OFFSET: u8 = 32;
 // cpu例外0-31避けてここから
@@ -23,3 +27,12 @@ impl InterruptIndex {
     }
 }
 
+
+lazy_static! {
+    pub static ref KEYBOARD: Mutex<PS2Keyboard<layouts::Us104Key, ScancodeSet1>> =
+        Mutex::new(PS2Keyboard::new(
+            ScancodeSet1::new(),
+            layouts::Us104Key,
+            HandleControl::Ignore,
+    ));
+}
