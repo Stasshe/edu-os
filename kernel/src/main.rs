@@ -4,6 +4,7 @@
 
 
 mod writer;
+mod gdt;
 
 // bootloader_apiを使うとno_mangleを手書きしなくてよくなるらしい
 use bootloader_api::{entry_point, BootInfo};
@@ -11,6 +12,7 @@ use bootloader_api::{entry_point, BootInfo};
 use core::panic::PanicInfo;
 use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
+// use x86_64::structures::idt::PageFaultErrorCode;
 
 
 
@@ -42,10 +44,11 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     //
     //
 
+    gdt::init();
     IDT.load();
-    x86_64::instructions::interrupts::int3();
-    
-    println!("After breakpoint, still alive");
+    // x86_64::instructions::interrupts::int3();
+    //
+    // println!("After breakpoint, still alive");
 
     loop {
         core::hint::spin_loop();
@@ -65,8 +68,24 @@ lazy_static! {
     static ref IDT: InterruptDescriptorTable = {
         let mut idt = InterruptDescriptorTable::new();
         idt.breakpoint.set_handler_fn(breakpoint_handler);
+        unsafe {
+            idt.double_fault
+            .set_handler_fn(double_fault_handler)
+            .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
+        }
         idt
     };
 }
 
 extern "x86-interrupt" fn breakpoint_handler(_static_frame: InterruptStackFrame) {}
+
+extern "x86-interrupt" fn double_fault_handler (
+    stack_frame: InterruptStackFrame,
+    _error_code: u64,
+) -> ! {
+    println!("DOUBLE FAULT\n{:#?}", stack_frame);
+    loop {
+        core::hint::spin_loop();
+    }
+}
+
