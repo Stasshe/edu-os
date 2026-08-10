@@ -42,6 +42,7 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     let framebuffer = boot_info.framebuffer.as_mut().unwrap();
     let info = framebuffer.info();
     let buffer = framebuffer.buffer_mut();
+    buffer.fill(0);
     
     let mut x = 10;
     for c in "Hello, edu-os!".chars() {
