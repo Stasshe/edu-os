@@ -13,8 +13,9 @@ edu-os/               root = "runner" crate（host向け、std使える）
     ├── .cargo/config.toml   [build] target = "x86_64-unknown-none" 固定
     ├── Cargo.toml            bootloader_api, noto-sans-mono-bitmap, lazy_static, x86_64, spin依存
     └── src/
-        ├── main.rs           entry_point!(kernel_main)、IDT+breakpoint例外
-        └── writer.rs         Writer構造体(framebuffer出力)、println!マクロ
+        ├── main.rs           entry_point!(kernel_main)、IDT+breakpoint/double fault例外
+        ├── writer.rs         Writer構造体(framebuffer出力)、println!マクロ
+        └── gdt.rs            GDT+TSS+IST(double fault専用スタック)
 ```
 
 workspace化はしていない（意図的、下記参照）。root/kernelは別々の独立cargoプロジェクト。
@@ -49,6 +50,7 @@ rootで`cargo build --target x86_64-unknown-none`を誤実行すると、std前�
 6. IDT + breakpoint例外ハンドラ → 完了。`x86_64`crate + `lazy_static`(`spin_no_std`feature)追加、`extern "x86-interrupt" fn breakpoint_handler`登録、`IDT.load()`→`int3()`→後続テキスト描画まで到達確認（QEMU再起動ループにならず成功）
 7. 出力抽象化（`Writer` + `println!`マクロ）→ 完了。`spin::Mutex`でグローバル保持、`core::fmt::Write`実装で`writeln!`経由の出力可能に。以後kernel_main/interrupt handlerどこからでも`println!("...")`で画面出力できる状態
 8. `writer.rs`へモジュール分離 → 完了。`Writer`構造体・`println!`マクロを`kernel/src/writer.rs`に移動、`main.rs`は`mod writer;`のみ
+9. Double Fault handler + IST → 完了。`kernel/src/gdt.rs`新規(TSS+GDT、IST0にdouble fault専用スタック確保)、`kernel_main`冒頭で`gdt::init()`(IDT.load()より前)、IDTに`double_fault.set_handler_fn(...).set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX)`登録。故意に未マップ番地書込み(`0xdeadbeef`)→page fault未処理→double fault発生→ハンドラでログ出力し停止、再起動ループにならないこと確認済み
 
 はまった点:
 - bootloader自身が起動ログをframebufferに直接描画してて(`bootloader-x86_64-common`が内部で同じ`noto-sans-mono-bitmap`使用)、kernel突入後もその描画が残る。`BootloaderConfig`にログ無効化オプション無し→kernel側で`buffer.fill(0)`して描画前にクリアする方式で対処
@@ -62,8 +64,9 @@ rootで`cargo build --target x86_64-unknown-none`を誤実行すると、std前�
 
 ## 次アクション
 
-未定（次セッションでユーザーと相談）。候補:
-- page fault / double fault等、他の例外ハンドラも追加（`println!`が使えるようになったので、handler内から直接エラー内容表示できる）
-- ページング
+進行中: Hardware割込み(PIC設定→timer/keyboard)。blog_os標準手順準拠、次点候補:
+- ページング基礎〜実装
+- page fault専用ハンドラ（現状はmissing entry経由でdouble faultに落ちてるだけ、CR2レジスタからfault番地読んで表示、等はまだ）
+- Heap allocator
 
 範囲外（今回やらない）: 自作bootloader（[[INTENT]]参照、後回し方針）。
