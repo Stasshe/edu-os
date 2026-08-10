@@ -3,15 +3,14 @@
 #![feature(abi_x86_interrupt)]
 
 
+mod writer;
+
 // bootloader_apiを使うとno_mangleを手書きしなくてよくなるらしい
 use bootloader_api::{entry_point, BootInfo};
-use bootloader_api::info::FrameBufferInfo;
+// use bootloader_api::info::FrameBufferInfo;
 use core::panic::PanicInfo;
-use noto_sans_mono_bitmap::{get_raster, FontWeight, RasterHeight};
 use lazy_static::lazy_static;
 use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
-use core::fmt::Write;
-use spin::Mutex;
 
 
 
@@ -25,77 +24,13 @@ use spin::Mutex;
 entry_point!(kernel_main);
 
 
-struct Writer {
-    buffer: &'static mut [u8],
-    info: FrameBufferInfo,
-    x: usize,
-    y: usize
-}
-
-impl Writer {
-    fn write_char(&mut self, c:char) {
-        if c == '\n' {
-            self.x = 10;
-            self.y += 16;
-            return;
-        }
-
-        let glyph = get_raster(c, FontWeight::Regular, RasterHeight::Size16)
-            .unwrap_or_else(|| get_raster(' ', FontWeight::Regular, RasterHeight::Size16)
-                .unwrap());
-
-        if self.x + glyph.width() > self.info.width {
-            self.x = 10;
-            self.y += 16;
-        }
-
-        for (row, line) in glyph.raster().iter().enumerate() {
-            for (col, &intensity) in line.iter().enumerate(){
-                let x = self.x + col;
-                let y = self.y + row;
-                let idx = (y * self.info.stride + x) * self.info.bytes_per_pixel;
-                self.buffer[idx] = intensity;
-                self.buffer[idx + 1] = intensity;
-                self.buffer[idx + 2] = intensity;
-            }
-        }
-
-        self.x += glyph.width()
-    }
-} 
-
-
-impl Write for Writer {
-    fn write_str(&mut self, s: &str) -> core::fmt::Result {
-        for c in s.chars() {
-            self.write_char(c);
-        }
-        Ok(())
-    }
-}
-
-
-
-static WRITER: Mutex<Option<Writer>> = Mutex::new(None);
-
-
-macro_rules! println {
-    ($($arg:tt)*) => {{
-        use core::fmt::Write;
-        if let Some(writer) = WRITER.lock().as_mut() {
-            writeln!(writer, $($arg)*).unwrap();
-        }
-    }};
-}
-
 fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     let framebuffer = boot_info.framebuffer.as_mut().unwrap();
     let info = framebuffer.info();
     let buffer = framebuffer.buffer_mut();
     buffer.fill(0);
     
-    *WRITER.lock() = Some(Writer { buffer, info, x: 10, y: 10});
-
+    *writer::WRITER.lock() = Some(writer::Writer::new(buffer, info));
     println!("Hello, edu-os from println macro");
 
 
