@@ -11,7 +11,7 @@ PROGRESS.mdの「次アクション」に書いてあるとこから再開。
 
 ## 現状（このプロンプトを書いた時点）
 
-IDT(breakpoint例外ハンドラ)着手直前。具体プラン・コード案は[[PROGRESS]]の「次アクション」セクション参照。まだ`kernel/Cargo.toml`にx86_64/lazy_static追加もkernel/src/main.rsへのコード反映もしていない状態。
+IDT + breakpoint例外ハンドラまで完了、QEMU実機確認済み。出力抽象化（Writer + println!マクロ）着手中、プラン提示済みだがコード未反映。詳細[[PROGRESS]]の「次アクション」参照。
 
 ## 運用ルール念押し（自動memoryにも入ってるが明示）
 
