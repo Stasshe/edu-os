@@ -22,3 +22,4 @@ impl InterruptIndex {
         self.as_u8() as usize
     }
 }
+

@@ -82,6 +82,8 @@ lazy_static! {
         }
         idt[interrupts::InterruptIndex::Timer.as_u8()]
             .set_handler_fn(timer_interrupt_handler);
+        idt[interrupts::InterruptIndex::Keyboard.as_u8()]
+            .set_handler_fn(keyboard_interrupt_handler);
         idt
     };
 }
@@ -107,3 +109,18 @@ extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFr
     }
 }
 
+extern "x86-interrupt" fn keyboard_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    use x86_64::instructions::port::Port;
+    
+    let mut port = Port::new(0x60); // keyboard controller のdata port
+    let scancode: u8 = unsafe {port.read()};
+    
+    print!("{:x}", scancode);
+    // とりまraw scancodeだけ表示  
+
+    unsafe {
+        interrupts::PICS
+            .lock()
+            .notify_end_of_interrupt(interrupts::InterruptIndex::Keyboard.as_u8());
+    }
+}
