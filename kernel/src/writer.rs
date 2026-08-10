@@ -80,3 +80,13 @@ macro_rules! println {
     }};
 }
 
+#[macro_export]
+macro_rules! print {
+     ($($arg:tt)*) => {{
+        use core::fmt::Write;
+        if let Some(writer) = $crate::writer::WRITER.lock().as_mut() {
+            write!(writer, $($arg)*).unwrap();
+        }
+    }};
+}   
+ 

@@ -9,4 +9,6 @@ noto-sans-mono-bitmap = "0.3.2"
 lazy_static = { version = "1.5.0", features = ["spin_no_std"]}
 x86_64 = "0.15.5"
 spin = "0.12.2"
+pic8259 = "0.11.0"
+pc-keyboard = "0.9.0"
 

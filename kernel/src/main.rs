@@ -5,6 +5,7 @@
 
 mod writer;
 mod gdt;
+mod interrupts;
 
 // bootloader_apiを使うとno_mangleを手書きしなくてよくなるらしい
 use bootloader_api::{entry_point, BootInfo};
@@ -44,8 +45,10 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     //
     //
 
-    gdt::init();
+    gdt::init(); 
     IDT.load();
+    unsafe {interrupts::PICS.lock().initialize()};
+    x86_64::instructions::interrupts::enable(); // sti, これ忘れると割り込み来ても無視される
     // x86_64::instructions::interrupts::int3();
     //
     // println!("After breakpoint, still alive");
@@ -77,6 +80,8 @@ lazy_static! {
             .set_handler_fn(double_fault_handler)
             .set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX);
         }
+        idt[interrupts::InterruptIndex::Timer.as_u8()]
+            .set_handler_fn(timer_interrupt_handler);
         idt
     };
 }
@@ -90,6 +95,15 @@ extern "x86-interrupt" fn double_fault_handler (
     println!("DOUBLE FAULT\n{:#?}", stack_frame);
     loop {
         core::hint::spin_loop();
+    }
+}
+
+extern "x86-interrupt" fn timer_interrupt_handler(_stack_frame: InterruptStackFrame) {
+    print!(".");
+    unsafe {
+        interrupts::PICS
+            .lock()
+            .notify_end_of_interrupt(interrupts::InterruptIndex::Timer.as_u8());
     }
 }
 
