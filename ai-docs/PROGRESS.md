@@ -42,12 +42,24 @@ rootで`cargo build --target x86_64-unknown-none`を誤実行すると、std前�
 1. kernel freestanding化（`entry_point!`マクロ、`#[panic_handler]`）→ 完了
 2. root/src/main.rs（Command経由でkernel build→BiosBoot::create_disk_image→qemu-system-x86_64起動）→ 完了
 3. `cargo run`（root）でQEMU起動確認 → 完了。bootloaderの起動ログ出力後「Jumping to kernel entry point」→`kernel_main`到達確認
-4. framebuffer単色塗りつぶし → 完了。`boot_info.framebuffer.as_mut().unwrap()`→`chunks_exact_mut(bytes_per_pixel)`でpixel単位に緑色書き込み、QEMU上で緑一色表示確認
+4. framebuffer単色塗りつぶし → 完了
+5. framebuffer文字描画 → 完了。`noto-sans-mono-bitmap`crate（kernel/Cargo.tomlに追加）の`get_raster`でbitmap取得、pixel輝度をB/G/R全chに書き込み。`draw_char`関数で1文字描画、x座標をglyph幅分進めながら文字列描画
+
+はまった点: bootloader自身が起動ログをframebufferに直接描画してて(`bootloader-x86_64-common`が内部で同じ`noto-sans-mono-bitmap`使用)、kernel突入後もその描画が残る。`BootloaderConfig`にログ無効化オプション無し→kernel側で`buffer.fill(0)`して描画前にクリアする方式で対処。
 
 `BootInfo`経由のframebuffer情報: `width: 1280, height: 720, pixel_format: Bgr, bytes_per_pixel: 3`（環境依存、QEMU実行時ログで確認）。
 
-## 次アクション
+## 次アクション: IDT（割り込み記述子テーブル）、breakpoint例外
 
-未定（次セッションでユーザーと相談）。候補: framebufferへの文字描画（bitmap font要、Oppermann旧チュートリアルのVGAテキストバッファ方式とは別物）、CPU例外ハンドラ(IDT)。
+着手前（プラン提示済み、コード未反映）。目的: 今panic時は無言でspinするだけ、例外ハンドラの土台作る。まずbreakpoint(`int3`)だけ、安全な例外1個で疎通確認。
+
+プラン:
+1. kernel/Cargo.tomlに追加: `x86_64 = "0.15.5"`, `lazy_static = { version = "1.5.0", features = ["spin_no_std"] }`
+2. `InterruptDescriptorTable::new()`はconst fnじゃないが`.load()`は`&'static self`要求→`lazy_static!`マクロで実行時初期化+static化
+3. `extern "x86-interrupt" fn breakpoint_handler(...)`定義、`idt.breakpoint.set_handler_fn(...)`で登録
+4. `kernel_main`で`IDT.load()`→`x86_64::instructions::interrupts::int3()`→その後にもう1行テキスト描画
+5. 検証: 2行目のテキストが出れば成功（例外ハンドラが処理して普通に処理続行した証拠）。IDT未設定/ミスなら例外→handler無し→double fault→triple fault→**QEMU自体が再起動ループ**する（bootログが繰り返し出る）、これが失敗の見た目
+
+先の話（今回のスコープ外）: interrupt handler内からframebufferに文字を出すには、`boot_info`由来のframebufferをグローバル(static + Mutex等)で保持する必要が出てくる。現状kernel_mainのローカル変数のみなので、handlerからは触れない。将来pageフォルト等の詳細をハンドラ内から画面表示したくなったら、この「グローバルmutable state」の壁に当たる→そこが次の次の学習ポイント。
 
 範囲外（今回やらない）: ページング、自作bootloader（[[INTENT]]参照、後回し方針）。
