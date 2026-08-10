@@ -50,9 +50,9 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     //
     // println!("After breakpoint, still alive");
     
-    unsafe {
-        *(0xdeabdeef as *mut u8) = 42;
-    }
+    // unsafe {
+    //     *(0xdeabdeef as *mut u8) = 42;
+    // }
 
     loop {
         core::hint::spin_loop();
