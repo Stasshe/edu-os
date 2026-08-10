@@ -6,3 +6,6 @@ edition = "2024"
 [dependencies]
 bootloader_api = "0.11.17"
 noto-sans-mono-bitmap = "0.3.2"
+lazy_static = { version = "1.5.0", features = ["spin_no_std"]}
+x86_64 = "0.15.5"
+

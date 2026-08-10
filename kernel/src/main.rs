@@ -1,11 +1,14 @@
 #![no_std]
 #![no_main]
+#![feature(abi_x86_interrupt)]
 
 // bootloader_apiを使うとno_mangleを手書きしなくてよくなるらしい
 use bootloader_api::{entry_point, BootInfo};
 use bootloader_api::info::FrameBufferInfo;
 use core::panic::PanicInfo;
 use noto_sans_mono_bitmap::{get_raster, FontWeight, RasterHeight};
+use lazy_static::lazy_static;
+use x86_64::structures::idt::{InterruptDescriptorTable, InterruptStackFrame};
 
 // 渡し方を固定するらしいが、何に対してかわかってない
 // _startがCPUの最初のjump先。 
@@ -55,6 +58,15 @@ fn kernel_main(boot_info: &'static mut BootInfo) -> ! {
     //     chunk[2] = 0x00; //Red
     // }
     //
+    //
+
+    IDT.load();
+    x86_64::instructions::interrupts::int3();
+
+    let mut x2 = 10;
+    for c in "After breakpoint, still alive".chars() {
+        x2 += draw_char(buffer, info, x2, 40, c);
+    }
 
 
     loop {
@@ -69,3 +81,14 @@ fn panic(_info: &PanicInfo) -> ! {
         core::hint::spin_loop();
     }
 }
+
+
+lazy_static! {
+    static ref IDT: InterruptDescriptorTable = {
+        let mut idt = InterruptDescriptorTable::new();
+        idt.breakpoint.set_handler_fn(breakpoint_handler);
+        idt
+    };
+}
+
+extern "x86-interrupt" fn breakpoint_handler(_static_frame: InterruptStackFrame) {}
