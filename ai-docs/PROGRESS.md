@@ -51,8 +51,11 @@ rootで`cargo build --target x86_64-unknown-none`を誤実行すると、std前�
 7. 出力抽象化（`Writer` + `println!`マクロ）→ 完了。`spin::Mutex`でグローバル保持、`core::fmt::Write`実装で`writeln!`経由の出力可能に。以後kernel_main/interrupt handlerどこからでも`println!("...")`で画面出力できる状態
 8. `writer.rs`へモジュール分離 → 完了。`Writer`構造体・`println!`マクロを`kernel/src/writer.rs`に移動、`main.rs`は`mod writer;`のみ
 9. Double Fault handler + IST → 完了。`kernel/src/gdt.rs`新規(TSS+GDT、IST0にdouble fault専用スタック確保)、`kernel_main`冒頭で`gdt::init()`(IDT.load()より前)、IDTに`double_fault.set_handler_fn(...).set_stack_index(gdt::DOUBLE_FAULT_IST_INDEX)`登録。故意に未マップ番地書込み(`0xdeadbeef`)→page fault未処理→double fault発生→ハンドラでログ出力し停止、再起動ループにならないこと確認済み
+10. Hardware割込み(PIC + timer) → 完了。`pic8259`crate追加、`kernel/src/interrupts.rs`新規(`ChainedPics` static、`InterruptIndex` enum でPIC_1_OFFSET=32起点の割込み番号管理)。IDTに`idt[InterruptIndex::Timer.as_u8()].set_handler_fn(...)`登録、handler内で`print!(".")`後`notify_end_of_interrupt`必須(EOI忘れると2回目以降割込み来ない)。初期化順序: `gdt::init()`→`IDT.load()`→`PICS.lock().initialize()`→`interrupts::enable()`(sti)。この順序を守らないと(特にIDT.loadより先にsti)未定義動作になる
 
 はまった点:
+- GDT入替後、CSは`CS::set_reg()`で明示的に張り替えたがSSを放置→bootloaderが設定した古いSSセレクタの数値が、新GDTでは偶然TSSディスクリプタのスロットと一致→timer割込みでスタック操作時にGP fault(#13)発生。`SS::set_reg(SegmentSelector::NULL)`で対処(long mode ring0ではSS=NULLでも合法)。**GDT入替時はCSだけでなくSS(理想はDS/ES/FSも)を明示的に張り直すこと**、が教訓
+- この手のバグはQEMU headless実行+`-d int,cpu_reset`(割込み/例外/リセットログ出力)で原因特定できた。GUIで単に「反応ない」だけだと分からない → 詰まったら`qemu-system-x86_64 -drive format=raw,file=target/disk.img -display none -d int,cpu_reset -no-reboot`が有効な調査手段
 - bootloader自身が起動ログをframebufferに直接描画してて(`bootloader-x86_64-common`が内部で同じ`noto-sans-mono-bitmap`使用)、kernel突入後もその描画が残る。`BootloaderConfig`にログ無効化オプション無し→kernel側で`buffer.fill(0)`して描画前にクリアする方式で対処
 - `lazy_static!`マクロは`static ref NAME: TYPE = 式;`構文、ブロック式の後にも`;`要る（忘れがちなので注意）
 - `extern "x86-interrupt"`はnightly限定unstable機能。`#![feature(abi_x86_interrupt)]`をcrate属性に追加必要
@@ -64,7 +67,7 @@ rootで`cargo build --target x86_64-unknown-none`を誤実行すると、std前�
 
 ## 次アクション
 
-進行中: Hardware割込み(PIC設定→timer/keyboard)。blog_os標準手順準拠、次点候補:
+進行中: Hardware割込み残り(keyboard)。blog_os標準手順準拠、次点候補:
 - ページング基礎〜実装
 - page fault専用ハンドラ（現状はmissing entry経由でdouble faultに落ちてるだけ、CR2レジスタからfault番地読んで表示、等はまだ）
 - Heap allocator
